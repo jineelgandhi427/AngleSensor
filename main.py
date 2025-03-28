@@ -5,7 +5,7 @@ import csv
 from datetime import datetime
 
 # Define port and baudrate
-SERIAL_PORT = 'COM14'
+SERIAL_PORT = 'COM8'
 BAUDRATE = 115200
 
 # Regex pattern to extract sensor data from USB Serial communication
@@ -32,7 +32,7 @@ def parse_line(line):
 def main():
     try:
         with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1) as ser, \
-             open(csv_filename, mode='w', newline='') as csvfile:
+             open(csv_filename, mode='w', newline='', buffering=1) as csvfile:
 
             csv_writer = csv.writer(csvfile)
             csv_writer.writerow(["step", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"]) # Column header
@@ -69,6 +69,8 @@ def main():
                         parsed['COS_N'],
                         parsed['TEMP']
                     ])
+
+                    csvfile.flush() # Forces an immediate write to disk
 
     except KeyboardInterrupt:
         print(f"\nLogging stopped. Data saved to {csv_filename}")
