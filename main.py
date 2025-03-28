@@ -5,7 +5,7 @@ import csv
 from datetime import datetime
 
 # Define port and baudrate
-SERIAL_PORT = 'COM8'
+SERIAL_PORT = '/dev/ttyACM0'
 BAUDRATE = 115200
 
 # Regex pattern to extract sensor data from USB Serial communication
@@ -35,7 +35,7 @@ def main():
              open(csv_filename, mode='w', newline='', buffering=1) as csvfile:
 
             csv_writer = csv.writer(csvfile)
-            csv_writer.writerow(["step", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"]) # Column header
+            csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"]) # Column header
 
             time.sleep(2)  # Give Arduino time to reset
 
@@ -50,10 +50,12 @@ def main():
                 line = ser.readline().decode('utf-8', errors='ignore').strip()
                 if not line:
                     continue
-
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 parsed = parse_line(line)
                 if parsed:
                     print(f"Step {parsed['step']:>2}: "
+                          f"Timestamp {timestamp}"
                           f"Encoder={parsed['encoder']:>5} | "
                           f"SIN_P={parsed['SIN_P']} | COS_P={parsed['COS_P']} | "
                           f"SIN_N={parsed['SIN_N']} | COS_N={parsed['COS_N']} | "
@@ -62,6 +64,7 @@ def main():
                     # Save data to CSV
                     csv_writer.writerow([
                         parsed['step'],
+                        timestamp,
                         parsed['encoder'],
                         parsed['SIN_P'],
                         parsed['COS_P'],
