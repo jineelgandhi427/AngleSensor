@@ -4,34 +4,27 @@ import re
 import csv
 from datetime import datetime
 
-# Define port and baudrate
+# Configuration
 SERIAL_PORT = 'COM8'
 BAUDRATE = 115200
+RUN_SYSTEM_MIN = 2  # Must be >1 and integer
+CYCLE_DURATION_MIN = 1.5  # Approx duration of one cycle in minutes
 
-# Set cycle settings here----------------------------------------------------------------------------------------------------------------
-RUN_SYSTEM_MIN = 2 # Set the time in mins for how many minutes you want take the readings. !IT CAN ONLY BE GREATER THAN 1 AND IN INTEGER!
-#----------------------------------------------------------------------------------------------------------------------------------------
-
-CYCLE_DURATION_MIN = 1.5  # Approximate duration of one cycle.
-NUM_OF_CYCLES_TO_COMPLETE = 1 if int(RUN_SYSTEM_MIN/CYCLE_DURATION_MIN) <= 1 else int(RUN_SYSTEM_MIN/CYCLE_DURATION_MIN)
-
-# Regex pattern defines
-SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([0-9.]+)" # Regex pattern to extract sensor data from USB Serial communication.
+# Regex pattern to parse sensor data
+SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([0-9.]+)"
 CYCLE_ENDED_INDICATOR = "Measurements ended for cycle:"
 CYCLE_START_OK = "You have selected option 2 the main program"
 
-# Generate timestamped filename
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-csv_filename = f"measurement_log_{timestamp}.csv"
+# Derived values
+NUM_CYCLES = max(1, int(RUN_SYSTEM_MIN / CYCLE_DURATION_MIN))
+CSV_FILENAME = f"measurement_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
-main_program_cycle_count = 1 # To store the number of cycles completed.
-can_start_new_cycle = True # Flag about when to start the new cycle.
-can_close_the_system = False # Flag to inidicate that cycle is completed and ensures the system doesnot stop in between when the time is up.
-cycle_start_time = None # To store the time when cycles started.
-system_start_time = None # To store the time when system was started.
-system_stop_time = None # To store the time when system ended compeletly.
+system_start = time.time()
+cycle_count = 0
+notedown_system_start_time = True
 
-def parse_data(line):
+def parse_sensor_line(line):
+    print(f"Line: {line}")
     match = re.match(SENSOR_DATA_REGEX, line)
     if match:
         return {
@@ -45,91 +38,77 @@ def parse_data(line):
         }
     return None
 
-def check_if_cycle_ended(line):
-    print(f"the msg is: {line}")
-    if CYCLE_ENDED_INDICATOR in line:
-        return True
-    return False
+def wait_for_ack(ser, expected_str):
+    """ Wait for Arduino to confirm cycle start """
+    global system_start, notedown_system_start_time
+    while True:
+        line = ser.readline().decode('utf-8', errors='ignore').strip()
+        if expected_str in line:
+            if notedown_system_start_time: # only note down the start time once in the begining.
+                system_start = time.time()
+                notedown_system_start_time = False
+            return
+        elif line:
+            print(f"Waiting... Arduino said: {line}")
 
 def main():
-    global main_program_cycle_count, can_close_the_system, can_start_new_cycle, cycle_start_time, system_start_time, system_stop_time
+    global system_start, cycle_count
     try:
         with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1) as ser, \
-             open(csv_filename, mode='w', newline='', buffering=1) as csvfile:
+             open(CSV_FILENAME, mode='w', newline='', buffering=5) as csvfile:
 
             csv_writer = csv.writer(csvfile)
-            csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"]) # Column header
+            csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"])
 
-            time.sleep(2)  # Give Arduino time to reset
+            print(f"Starting system...\nLogging to: {CSV_FILENAME}")
+            print(f"System runtime: {RUN_SYSTEM_MIN} min → Estimated cycles: {NUM_CYCLES}")
 
-            # Flushing out the serial communication
+            time.sleep(2)  # Allow Arduino to reset
             ser.reset_input_buffer()
             ser.reset_output_buffer()
 
-            system_start_time = time.time() # here the start time is defined just to avoid errors, it actually doesnot use this.
+            while (time.time() - system_start) <= RUN_SYSTEM_MIN * 60:
+                # Trigger a new cycle
+                ser.write(b'2\n')
+                wait_for_ack(ser, CYCLE_START_OK)
 
-            print(f"Starting system...\nLogging to: {csv_filename}")
-            print(f"The System will run for -> {RUN_SYSTEM_MIN} minutes")
-            print(f"The System will execute approximate {NUM_OF_CYCLES_TO_COMPLETE} cycles")
+                cycle_count += 1
+                print(f"\n{'*'*50}\nStarting cycle {cycle_count}\n{'*'*50}")
 
-            notedown_system_start_time = True
+                while True:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if not line:
+                        continue
 
-            while (time.time() - system_start_time <= RUN_SYSTEM_MIN*60) and can_start_new_cycle: # Run the system till mentioned by user. Convert the min to sec -> RUN_SYSTEM_MIN*60
-                if can_start_new_cycle:
-                    line = ''
-                    ser.write(b'2\n') # Sending signal to arduino to start a new cycle.
-                    # wait till the arduino has started recevied the cmd and started the cycle.
-                    while CYCLE_START_OK not in line:
-                        line = ser.readline().decode('utf-8', errors='ignore').strip()
-                    print(f"*"*50)
-                    print(f"Starting cycle number: {main_program_cycle_count}")
-                    print(f"*"*50)
-                    can_start_new_cycle = False
-                    if notedown_system_start_time: # Note down the time when the ardunio starts the cycles, but only do it once.
-                        system_start_time = time.time()
-                        notedown_system_start_time = False
+                    if CYCLE_ENDED_INDICATOR in line:
+                        print(f"\n{'*'*50}\nFinished cycle {cycle_count}\n{'*'*50}")
+                        break
 
-                line = ser.readline().decode('utf-8', errors='ignore').strip()
-                if not line:
-                    continue
-                
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                is_cycle_ended = check_if_cycle_ended(line)
-                print(is_cycle_ended)
-                if not is_cycle_ended:
-                    parsed = parse_data(line)
+                    parsed = parse_sensor_line(line)
                     if parsed:
-                        print(f"Step {parsed['step']:>2}: "
-                            f"Timestamp {timestamp}"
-                            f"Encoder={parsed['encoder']:>5} | "
-                            f"SIN_P={parsed['SIN_P']} | COS_P={parsed['COS_P']} | "
-                            f"SIN_N={parsed['SIN_N']} | COS_N={parsed['COS_N']} | "
-                            f"Temp={parsed['TEMP']:.2f}°C")
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        # print(f"Step {parsed['step']:>2} | Time {timestamp} | "
+                        #       f"Enc={parsed['encoder']:>5} | SIN_P={parsed['SIN_P']} | "
+                        #       f"COS_P={parsed['COS_P']} | SIN_N={parsed['SIN_N']} | "
+                        #       f"COS_N={parsed['COS_N']} | Temp={parsed['TEMP']:.2f}°C")
 
-                        # Save data to CSV
                         csv_writer.writerow([
-                            parsed['step'],
-                            timestamp,
-                            parsed['encoder'],
-                            parsed['SIN_P'],
-                            parsed['COS_P'],
-                            parsed['SIN_N'],
-                            parsed['COS_N'],
+                            parsed['step'], timestamp, parsed['encoder'],
+                            parsed['SIN_P'], parsed['COS_P'],
+                            parsed['SIN_N'], parsed['COS_N'],
                             parsed['TEMP']
                         ])
+                        csvfile.flush()
+                        print(time.time() - system_start)
+                    print(f"OUTSIDE: {time.time() - system_start}")
 
-                        csvfile.flush() # Forces an immediate write to disk
-                else:
-                    print(f"*"*50)
-                    print(f"Finished cycle number: {main_program_cycle_count}")
-                    print(f"*"*50)
-                    main_program_cycle_count = main_program_cycle_count + 1
-                    can_start_new_cycle = True
+            print(f"\nSystem completed. Total cycles: {cycle_count}")
+            print(f"Data logged to: {CSV_FILENAME}")
 
     except KeyboardInterrupt:
-        print(f"\nLogging stopped. Data saved to {csv_filename}")
+        print(f"\nInterrupted by user. Data saved to {CSV_FILENAME}")
     except serial.SerialException as e:
-        print(f"Serial error: {e}")
+        print(f"Serial connection error: {e}")
 
 if __name__ == "__main__":
     main()
