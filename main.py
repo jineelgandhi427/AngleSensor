@@ -7,11 +7,14 @@ from datetime import datetime
 # Configuration
 SERIAL_PORT = 'COM8'
 BAUDRATE = 115200
-RUN_SYSTEM_MIN = 2  # Must be >1 and integer
 CYCLE_DURATION_MIN = 1.5  # Approx duration of one cycle in minutes
 
+#---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
+RUN_SYSTEM_MIN = 2  # Must be >1 and integer
+#-----------------------------------------------------------------------------------------------------------------
+
 # Regex pattern to parse sensor data
-SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+([0-9.]+)"
+SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+\.\d+)"
 CYCLE_ENDED_INDICATOR = "Measurements ended for cycle:"
 CYCLE_START_OK = "You have selected option 2 the main program"
 
@@ -19,12 +22,15 @@ CYCLE_START_OK = "You have selected option 2 the main program"
 NUM_CYCLES = max(1, int(RUN_SYSTEM_MIN / CYCLE_DURATION_MIN))
 CSV_FILENAME = f"measurement_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
+# Time and Date format of the system
+DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Global variables
 system_start = time.time()
 cycle_count = 0
 notedown_system_start_time = True
 
 def parse_sensor_line(line):
-    print(f"Line: {line}")
     match = re.match(SENSOR_DATA_REGEX, line)
     if match:
         return {
@@ -49,13 +55,13 @@ def wait_for_ack(ser, expected_str):
                 notedown_system_start_time = False
             return
         elif line:
-            print(f"Waiting... Arduino said: {line}")
+            print(f"Waiting for Arduino to start cycle: {cycle_count}...")
 
 def main():
     global system_start, cycle_count
     try:
         with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1) as ser, \
-             open(CSV_FILENAME, mode='w', newline='', buffering=5) as csvfile:
+             open(CSV_FILENAME, mode='w', newline='', buffering=1) as csvfile:
 
             csv_writer = csv.writer(csvfile)
             csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"])
@@ -70,9 +76,8 @@ def main():
             while (time.time() - system_start) <= RUN_SYSTEM_MIN * 60:
                 # Trigger a new cycle
                 ser.write(b'2\n')
-                wait_for_ack(ser, CYCLE_START_OK)
-
                 cycle_count += 1
+                wait_for_ack(ser, CYCLE_START_OK)
                 print(f"\n{'*'*50}\nStarting cycle {cycle_count}\n{'*'*50}")
 
                 while True:
@@ -86,11 +91,11 @@ def main():
 
                     parsed = parse_sensor_line(line)
                     if parsed:
-                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        # print(f"Step {parsed['step']:>2} | Time {timestamp} | "
-                        #       f"Enc={parsed['encoder']:>5} | SIN_P={parsed['SIN_P']} | "
-                        #       f"COS_P={parsed['COS_P']} | SIN_N={parsed['SIN_N']} | "
-                        #       f"COS_N={parsed['COS_N']} | Temp={parsed['TEMP']:.2f}°C")
+                        timestamp = datetime.now().strftime(DATE_TIME_FORMAT)
+                        print(f"Step {parsed['step']:>2} | Time {timestamp} | "
+                              f"Enc={parsed['encoder']:>5} | SIN_P={parsed['SIN_P']} | "
+                              f"COS_P={parsed['COS_P']} | SIN_N={parsed['SIN_N']} | "
+                              f"COS_N={parsed['COS_N']} | Temp={parsed['TEMP']:.2f}°C")
 
                         csv_writer.writerow([
                             parsed['step'], timestamp, parsed['encoder'],
@@ -99,8 +104,6 @@ def main():
                             parsed['TEMP']
                         ])
                         csvfile.flush()
-                        print(time.time() - system_start)
-                    print(f"OUTSIDE: {time.time() - system_start}")
 
             print(f"\nSystem completed. Total cycles: {cycle_count}")
             print(f"Data logged to: {CSV_FILENAME}")
