@@ -14,8 +14,8 @@ RUN_SYSTEM_MIN = 0.5
 #-----------------------------------------------------------------------------------------------------------------
 
 # Regex pattern to parse sensor data
-SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+\.\d+)"
-CYCLE_ENDED_INDICATOR = "Measurements ended for cycle:"
+SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
+CYCLE_ENDED_INDICATOR = "Measurements ended for the cycle"
 CYCLE_START_OK = "You have selected option 2 the main program"
 
 # Derived values
