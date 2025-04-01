@@ -1,4 +1,4 @@
-[2025-04-01 12:46:49] System started. Runtime goal: 1 min
+    [2025-04-01 12:46:49] System started. Runtime goal: 1 min
 [2025-04-01 12:46:56] Cycle 1 started
 [2025-04-01 12:47:35] Cycle 1 ended
 [2025-04-01 12:47:38] Cycle 2 started

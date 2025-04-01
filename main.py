@@ -10,7 +10,7 @@ BAUDRATE = 115200
 CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 
 #---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
-RUN_SYSTEM_MIN = 1
+RUN_SYSTEM_MIN = 26
 #-----------------------------------------------------------------------------------------------------------------
 
 # Regex pattern to parse sensor data
