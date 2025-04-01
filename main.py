@@ -7,10 +7,10 @@ from datetime import datetime
 # Configuration
 SERIAL_PORT = '/dev/ttyACM0'
 BAUDRATE = 115200
-CYCLE_DURATION_MIN = 1.5  # Approx duration of one cycle in minutes
+CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 
 #---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
-RUN_SYSTEM_MIN = 10
+RUN_SYSTEM_MIN = 1
 #-----------------------------------------------------------------------------------------------------------------
 
 # Regex pattern to parse sensor data
@@ -33,8 +33,10 @@ notedown_system_start_time = True
 
 def parse_sensor_line(line):
     global cycle_count
+    print(f"Line: {line}")
     match = re.match(SENSOR_DATA_REGEX, line)
     if match:
+        print("Matched")
         return {
             "step": int(match.group(1)),
             "encoder": int(match.group(2)),
