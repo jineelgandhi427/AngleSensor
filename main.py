@@ -10,7 +10,7 @@ BAUDRATE = 115200
 CYCLE_DURATION_MIN = 1.5  # Approx duration of one cycle in minutes
 
 #---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
-RUN_SYSTEM_MIN = 1  # Must be >1 and integer
+RUN_SYSTEM_MIN = 0.5
 #-----------------------------------------------------------------------------------------------------------------
 
 # Regex pattern to parse sensor data
@@ -32,6 +32,7 @@ cycle_count = 0
 notedown_system_start_time = True
 
 def parse_sensor_line(line):
+    global cycle_count
     match = re.match(SENSOR_DATA_REGEX, line)
     if match:
         return {
@@ -41,7 +42,7 @@ def parse_sensor_line(line):
             "COS_P": int(match.group(4)),
             "SIN_N": int(match.group(5)),
             "COS_N": int(match.group(6)),
-            "TEMP": float(match.group(7))
+            "cycle": cycle_count
         }
     return None
 
@@ -70,7 +71,7 @@ def main():
              open(LOG_FILENAME, mode='w') as log_file:
 
             csv_writer = csv.writer(csvfile)
-            csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "TEMP"])
+            csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "cycle"])
 
             print(f"Starting system...\nLogging to: {CSV_FILENAME}")
             print(f"Cycle log: {LOG_FILENAME}")
@@ -90,7 +91,6 @@ def main():
                 cycle_count += 1
                 wait_for_ack(ser, CYCLE_START_OK)
 
-                cycle_start_time = datetime.now()
                 log_event(log_file, f"Cycle {cycle_count} started")
 
                 print(f"\n{'*'*50}\nStarting cycle {cycle_count}\n{'*'*50}")
@@ -111,13 +111,13 @@ def main():
                         print(f"Step {parsed['step']:>2} | Time {timestamp} | "
                               f"Enc={parsed['encoder']:>5} | SIN_P={parsed['SIN_P']} | "
                               f"COS_P={parsed['COS_P']} | SIN_N={parsed['SIN_N']} | "
-                              f"COS_N={parsed['COS_N']} | Temp={parsed['TEMP']:.2f}°C")
+                              f"COS_N={parsed['COS_N']} | cycle={cycle_count}")
 
                         csv_writer.writerow([
                             parsed['step'], timestamp, parsed['encoder'],
                             parsed['SIN_P'], parsed['COS_P'],
                             parsed['SIN_N'], parsed['COS_N'],
-                            parsed['TEMP']
+                            cycle_count
                         ])
                         csvfile.flush()
 
