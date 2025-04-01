@@ -33,10 +33,8 @@ notedown_system_start_time = True
 
 def parse_sensor_line(line):
     global cycle_count
-    print(f"Line: {line}")
     match = re.match(SENSOR_DATA_REGEX, line)
     if match:
-        print("Matched")
         return {
             "step": int(match.group(1)),
             "encoder": int(match.group(2)),
