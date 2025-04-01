@@ -5,12 +5,12 @@ import csv
 from datetime import datetime
 
 # Configuration
-SERIAL_PORT = 'COM8'
+SERIAL_PORT = '/dev/ttyACM0'
 BAUDRATE = 115200
 CYCLE_DURATION_MIN = 1.5  # Approx duration of one cycle in minutes
 
 #---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
-RUN_SYSTEM_MIN = 0.5
+RUN_SYSTEM_MIN = 10
 #-----------------------------------------------------------------------------------------------------------------
 
 # Regex pattern to parse sensor data
