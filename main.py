@@ -3,15 +3,16 @@ import time
 import re
 import csv
 from datetime import datetime
+from prepare_final_csv import PrepareData
 
 # Configuration
 SERIAL_PORT = '/dev/ttyACM0'
 BAUDRATE = 115200
 CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 
-#---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
+# ---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
 RUN_SYSTEM_MIN = 26
-#-----------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------
 
 # Regex pattern to parse sensor data
 SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
@@ -31,6 +32,7 @@ system_start = time.time()
 cycle_count = 0
 notedown_system_start_time = True
 
+
 def parse_sensor_line(line):
     global cycle_count
     match = re.match(SENSOR_DATA_REGEX, line)
@@ -46,29 +48,32 @@ def parse_sensor_line(line):
         }
     return None
 
+
 def wait_for_ack(ser, expected_str):
     """ Wait for Arduino to confirm cycle start """
     global system_start, notedown_system_start_time
     while True:
         line = ser.readline().decode('utf-8', errors='ignore').strip()
         if expected_str in line:
-            if notedown_system_start_time: # only note down the start time once in the begining.
+            if notedown_system_start_time:  # only note down the start time once in the begining.
                 system_start = time.time()
                 notedown_system_start_time = False
             return
         elif line:
             print(f"Waiting for Arduino to start cycle: {cycle_count}...")
 
+
 def log_event(log_file, message):
     timestamp = datetime.now().strftime(DATE_TIME_FORMAT)
     log_file.write(f"[{timestamp}] {message}\n")
+
 
 def main():
     global system_start, cycle_count
     try:
         with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1) as ser, \
-             open(CSV_FILENAME, mode='w', newline='', buffering=1) as csvfile, \
-             open(LOG_FILENAME, mode='w') as log_file:
+                open(CSV_FILENAME, mode='w', newline='', buffering=1) as csvfile, \
+                open(LOG_FILENAME, mode='w') as log_file:
 
             csv_writer = csv.writer(csvfile)
             csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "cycle"])
@@ -140,6 +145,7 @@ def main():
         print(f"\nInterrupted by user. Data saved to {CSV_FILENAME}")
     except serial.SerialException as e:
         print(f"Serial connection error: {e}")
+
 
 if __name__ == "__main__":
     main()
