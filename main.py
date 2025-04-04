@@ -3,26 +3,29 @@ import time
 import re
 import csv
 from datetime import datetime
-from prepare_final_csv import PrepareData
+import pandas as pd
 
 # Configuration
-SERIAL_PORT = '/dev/ttyACM0'
+SERIAL_PORT = 'COM8'
 BAUDRATE = 115200
 CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 
 # ---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
-RUN_SYSTEM_MIN = 26
+RUN_SYSTEM_MIN = 1
 # -----------------------------------------------------------------------------------------------------------------
 
-# Regex pattern to parse sensor data
+# Regex pattern to parse data
 SENSOR_DATA_REGEX = r"\s*(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
 CYCLE_ENDED_INDICATOR = "Measurements ended for the cycle"
 CYCLE_START_OK = "You have selected option 2 the main program"
+ENCODER_0_360_COUNT_REGEX = r"0°-360° cw\s+(-?\d+)"
+ENCODER_360_0_COUNT_REGEX = r"360°-0° ccw\s+(-?\d+)"
 
 # Derived values
 NUM_CYCLES = max(1, int(RUN_SYSTEM_MIN / CYCLE_DURATION_MIN))
-CSV_FILENAME = f"measurement_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+DATA_FILENAME = f"measurement_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 LOG_FILENAME = f"cycle_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+ENCODER_FILENAME = f"encoder_counts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
 # Time and Date format of the system
 DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -33,20 +36,38 @@ cycle_count = 0
 notedown_system_start_time = True
 
 
-def parse_sensor_line(line):
+def parse_sensor_data(line, csv_writer, csvfile):
     global cycle_count
-    match = re.match(SENSOR_DATA_REGEX, line)
-    if match:
-        return {
-            "step": int(match.group(1)),
-            "encoder": int(match.group(2)),
-            "SIN_P": int(match.group(3)),
-            "COS_P": int(match.group(4)),
-            "SIN_N": int(match.group(5)),
-            "COS_N": int(match.group(6)),
-            "cycle": cycle_count
-        }
-    return None
+
+    def fetch_sensor_data():
+        match = re.match(SENSOR_DATA_REGEX, line)
+        if match:
+            return {
+                "step": int(match.group(1)),
+                "encoder": int(match.group(2)),
+                "SIN_P": int(match.group(3)),
+                "COS_P": int(match.group(4)),
+                "SIN_N": int(match.group(5)),
+                "COS_N": int(match.group(6)),
+                "cycle": cycle_count
+            }
+        return None
+
+    parsed_data = fetch_sensor_data()
+    if parsed_data:
+        timestamp = datetime.now().strftime(DATE_TIME_FORMAT)
+        print(f"Step {parsed_data['step']:>2} | Time {timestamp} | "
+              f"Enc={parsed_data['encoder']:>5} | SIN_P={parsed_data['SIN_P']} | "
+              f"COS_P={parsed_data['COS_P']} | SIN_N={parsed_data['SIN_N']} | "
+              f"COS_N={parsed_data['COS_N']} | cycle={cycle_count}")
+
+        csv_writer.writerow([
+            parsed_data['step'], timestamp, parsed_data['encoder'],
+            parsed_data['SIN_P'], parsed_data['COS_P'],
+            parsed_data['SIN_N'], parsed_data['COS_N'],
+            cycle_count
+        ])
+        csvfile.flush()
 
 
 def wait_for_ack(ser, expected_str):
@@ -68,17 +89,69 @@ def log_event(log_file, message):
     log_file.write(f"[{timestamp}] {message}\n")
 
 
+def parse_ending_summary(ser, csv_encoder_count_writer, encoder_file):
+    encoder6_count_stored = False
+    encoder7_count_stored = False
+    # Run in a loop until encoder values are not received
+    while not encoder6_count_stored or not encoder7_count_stored:
+        line = ser.readline().decode('utf-8', errors='ignore').strip()
+        if match := re.search(ENCODER_0_360_COUNT_REGEX, line):
+            encoder_0_360 = int(match.group(1))
+            encoder6_count_stored = True
+        elif match := re.search(ENCODER_360_0_COUNT_REGEX, line):
+            encoder_360_0 = int(match.group(1))
+            encoder7_count_stored = True
+    # Save the encoder values in a csv file
+    csv_encoder_count_writer.writerow([cycle_count, encoder_0_360, encoder_360_0])
+    encoder_file.flush()
+
+
+def fit_encoder_counts_to_measurements(encoder_counts_file_path, measurements_file_path):
+    # Load both CSVs
+    encoder_counts = pd.read_csv(encoder_counts_file_path)
+    measurements = pd.read_csv(measurements_file_path)
+
+    # Iterate through each cycle
+    for idx, row in encoder_counts.iterrows():
+        cycle_num = row['cycle']
+        encoder_0_360 = row['encoder_0_360_count']
+        encoder_360_0 = row['encoder_360_0_count']
+
+        # Find all step 0 entries for this cycle
+        step0_rows = measurements[(measurements['cycle'] == cycle_num) & (measurements['step'] == 0)]
+
+        # Get the indexes
+        first_step0_idx = step0_rows.index[0]
+        second_step0_idx = step0_rows.index[1]
+
+        # Update the encoder values
+        measurements.at[first_step0_idx, 'encoder'] = encoder_0_360
+        measurements.at[second_step0_idx, 'encoder'] = encoder_360_0
+
+    # Overwrite the existing file
+    measurements.to_csv(measurements_file_path, index=False)
+    print(f"Done...")
+    print("")
+
+
 def main():
     global system_start, cycle_count
     try:
         with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1) as ser, \
-                open(CSV_FILENAME, mode='w', newline='', buffering=1) as csvfile, \
-                open(LOG_FILENAME, mode='w') as log_file:
+                open(DATA_FILENAME, mode='w', newline='', buffering=1) as csvfile, \
+                open(LOG_FILENAME, mode='w') as log_file, \
+                open(ENCODER_FILENAME, mode='w', newline='', buffering=1) as encoder_file:
 
+            # Initiate data csv file
             csv_writer = csv.writer(csvfile)
             csv_writer.writerow(["step", "timestamp", "encoder", "SIN_P", "COS_P", "SIN_N", "COS_N", "cycle"])
 
-            print(f"Starting system...\nLogging to: {CSV_FILENAME}")
+            # Initiate encoder csv file
+            csv_encoder_count_writer = csv.writer(encoder_file)
+            csv_encoder_count_writer.writerow(
+                ["cycle", "encoder_0_360_count", "encoder_360_0_count"])
+
+            print(f"Starting system...\nLogging to: {DATA_FILENAME}")
             print(f"Cycle log: {LOG_FILENAME}")
             print(f"System runtime: {RUN_SYSTEM_MIN} min → Estimated cycles: {NUM_CYCLES}")
 
@@ -105,44 +178,42 @@ def main():
                     if not line:
                         continue
 
+                    parse_sensor_data(line, csv_writer, csvfile)
+
                     if CYCLE_ENDED_INDICATOR in line:
+                        parse_ending_summary(ser, csv_encoder_count_writer, encoder_file)
                         log_event(log_file, f"Cycle {cycle_count} ended")
                         print(f"\n{'*'*50}\nFinished cycle {cycle_count}\n{'*'*50}")
                         break
 
-                    parsed = parse_sensor_line(line)
-                    if parsed:
-                        timestamp = datetime.now().strftime(DATE_TIME_FORMAT)
-                        print(f"Step {parsed['step']:>2} | Time {timestamp} | "
-                              f"Enc={parsed['encoder']:>5} | SIN_P={parsed['SIN_P']} | "
-                              f"COS_P={parsed['COS_P']} | SIN_N={parsed['SIN_N']} | "
-                              f"COS_N={parsed['COS_N']} | cycle={cycle_count}")
-
-                        csv_writer.writerow([
-                            parsed['step'], timestamp, parsed['encoder'],
-                            parsed['SIN_P'], parsed['COS_P'],
-                            parsed['SIN_N'], parsed['COS_N'],
-                            cycle_count
-                        ])
-                        csvfile.flush()
-
             full_system_end = datetime.now()
             total_runtime_min = round((full_system_end - full_system_start).total_seconds() / 60, 2)
 
+            print("====================================================")
             print(f"\nSystem completed. Total cycles: {cycle_count}")
-            print(f"Data logged to: {CSV_FILENAME}")
+            print(f"Data logged to: {DATA_FILENAME}")
             print(f"Logs are saved in: {LOG_FILENAME}")
+            print(f"Encoder counts file saved as   : {ENCODER_FILENAME}")
+            print("====================================================")
 
             # Final summary to be logged
-            log_file.write("\n========= SYSTEM SUMMARY =========\n")
+            log_file.write("\n================ SYSTEM SUMMARY ===============\n")
             log_file.write(f"Total cycles completed: {cycle_count}\n")
+            log_file.write(f"Data logged to        : {DATA_FILENAME}\n")
+            log_file.write(f"Logs are saved in     : {LOG_FILENAME}\n")
             log_file.write(f"System started at     : {full_system_start.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"System ended at       : {full_system_end.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"Total time elapsed    : {total_runtime_min} minutes\n")
-            log_file.write("==================================\n")
+
+            print("Fitting encoder counts...")
+            log_file.write(f"Start fitting Encoder counts -> {time.strftime(DATE_TIME_FORMAT)}\n")
+            fit_encoder_counts_to_measurements(ENCODER_FILENAME, DATA_FILENAME)
+            log_file.write(f"Finished fitting Encoder counts -> {time.strftime(DATE_TIME_FORMAT)}\n")
+            log_file.write(f"Encoder counts file saved as   : {ENCODER_FILENAME}\n")
+            log_file.write("====================================================\n")
 
     except KeyboardInterrupt:
-        print(f"\nInterrupted by user. Data saved to {CSV_FILENAME}")
+        print(f"\nInterrupted by user. Data saved to {DATA_FILENAME}")
     except serial.SerialException as e:
         print(f"Serial connection error: {e}")
 
