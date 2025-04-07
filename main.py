@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 
 # Configuration
-SERIAL_PORT = 'COM8'
+SERIAL_PORT = 'COM14'
 BAUDRATE = 115200
 CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 ENCODER_PPR = 40000  # Total pulse per rotation of encoder in the system
@@ -125,7 +125,7 @@ def parse_encoder_errors(ser, csv_encoder_error_writer, encoder_file):
     if (cycle_count == 1):
         csv_encoder_error_writer.writerow([cycle_count, 0, current_encoder_error_CCW - ENCODER_PPR])  # [0, CCW - PPR]
     else:
-        encoder_error_after_CCW = [encoder_error_after_CW_prev + current_encoder_error_CCW] - ENCODER_PPR
+        encoder_error_after_CCW = (encoder_error_after_CW_prev + current_encoder_error_CCW) - ENCODER_PPR
         csv_encoder_error_writer.writerow([cycle_count, encoder_error_after_CW_prev,
                                           encoder_error_after_CCW])  # [ PREVIOUS_ERR, (PREVIOUS_ERR + CCW) - PPR]
     encoder_file.flush()

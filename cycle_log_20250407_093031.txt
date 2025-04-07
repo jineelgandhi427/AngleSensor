@@ -1,0 +1,17 @@
+[2025-04-07 09:30:31] System started. Runtime goal: 1 min
+[2025-04-07 09:30:33] Cycle 1 started
+[2025-04-07 09:31:20] Cycle 1 ended -> [39998, -39986]
+[2025-04-07 09:31:21] Cycle 2 started
+[2025-04-07 09:32:11] Cycle 2 ended -> [39983, -39982]
+
+================ SYSTEM SUMMARY ===============
+Total cycles completed: 2
+Data logged to        : measurement_log_20250407_093031.csv
+Logs are saved in     : cycle_log_20250407_093031.txt
+System started at     : 2025-04-07 09:30:33
+System ended at       : 2025-04-07 09:32:11
+Total time elapsed    : 1.63 minutes
+Start fitting Encoder counts -> 2025-04-07 09:32:11
+Finished fitting Encoder counts -> 2025-04-07 09:32:11
+Encoder error file saved as   : encoder_errors_20250407_093031.csv
+====================================================
