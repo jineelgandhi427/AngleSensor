@@ -7,7 +7,7 @@ import pandas as pd
 
 # Configuration
 SERIAL_PORT = 'COM14'
-BAUDRATE = 115200
+BAUDRATE = 115200 # Communication rate
 CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 ENCODER_PPR = 40000  # Total pulse per rotation of encoder in the system
 
