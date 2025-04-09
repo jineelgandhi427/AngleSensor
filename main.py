@@ -31,6 +31,8 @@ CYCLE_ENDED_INDICATOR = "Measurements ended for the cycle"
 CYCLE_START_OK = "You have selected option 2 the main program"
 ENCODER_0_360_COUNT_REGEX = r"0°-360° cw\s+(-?\d+)"
 ENCODER_360_0_COUNT_REGEX = r"360°-0° ccw\s+(-?\d+)"
+CW_ENCODER_ERROR_REGEX = r"Correction cw:\s*(-?\d+)"
+CCW_ENCODER_ERROR_REGEX = r"Correction ccw:\s*(-?\d+)"
 
 # Derived values (DO NOT CHANGE!)
 NUM_CYCLES = max(1, int(RUN_SYSTEM_MIN / CYCLE_DURATION_MIN))
@@ -47,6 +49,8 @@ system_start = time.time()  # The variable is used to note down the system start
 cycle_count = 0  # To store the current cycle number
 notedown_system_start_time = True
 encoder_error_after_CCW_prev = 0  # To store the previously calculated total error after each CW operation
+cw_encoder_error_diff = []
+ccw_encoder_error_diff = []
 
 # Maths module object
 formulas = Formula(o_x_m=O_X_M, o_y_m=O_Y_M, a_x_m=A_X_M, a_y_m=A_Y_M, phi_x_m=PHI_X_M, phi_y_m=PHI_Y_M)
@@ -170,8 +174,23 @@ def fit_encoder_error_to_measurements(encoder_error_file_path, measurements_file
     print("")
 
 
+def add_dir_col_to_data(file_path):
+    df = pd.read_csv(file_path)
+    directions = []
+    reset_counter = 0
+    for idx, row in df.iterrows():
+        if row['step'] == 0 and idx != 0:
+            reset_counter += 1
+        if reset_counter % 2 == 0:
+            directions.append('CW')
+        else:
+            directions.append('CCW')
+    df['direction'] = directions
+    df.to_csv(file_path, index=False)
+
+
 def main():
-    global system_start, cycle_count
+    global system_start, cycle_count, formulas, cw_encoder_error_diff, ccw_encoder_error_diff
     try:
         with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1) as ser, \
                 open(DATA_FILENAME, mode='w', newline='', buffering=1) as csvfile, \
@@ -216,6 +235,13 @@ def main():
 
                     parse_sensor_data(line, csv_writer, csvfile)
 
+                    match_cw = re.search(CW_ENCODER_ERROR_REGEX, line)
+                    if match_cw:
+                        cw_encoder_error_diff.append(match_cw)
+                    match_ccw = re.search(CCW_ENCODER_ERROR_REGEX, line)
+                    if match_ccw:
+                        ccw_encoder_error_diff.append(match_ccw)
+
                     if CYCLE_ENDED_INDICATOR in line:
                         encoder_errors = parse_encoder_errors(ser, csv_encoder_error_writer, encoder_file)
                         log_event(log_file, f"Cycle {cycle_count} ended -> {encoder_errors}")
@@ -232,11 +258,11 @@ def main():
             print(f"Encoder error file saved as   : {ENCODER_FILENAME}")
             print("====================================================")
 
+            print("Preparing the CSV file, it might take some time...")
+
             # Final summary to be logged
             log_file.write("\n================ SYSTEM SUMMARY ===============\n")
             log_file.write(f"Total cycles completed: {cycle_count}\n")
-            log_file.write(f"Data logged to        : {DATA_FILENAME}\n")
-            log_file.write(f"Logs are saved in     : {LOG_FILENAME}\n")
             log_file.write(f"System started at     : {full_system_start.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"System ended at       : {full_system_end.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"Total time elapsed    : {total_runtime_min} minutes\n")
@@ -246,6 +272,20 @@ def main():
             fit_encoder_error_to_measurements(ENCODER_FILENAME, DATA_FILENAME)
             log_file.write(f"Finished fitting Encoder counts -> {time.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"Encoder error file saved as   : {ENCODER_FILENAME}\n")
+
+            # Add direction column (CW/CCW) to the data
+            print("Adding direction column...")
+            log_file.write(f"Adding direction column to CSV -> {time.strftime(DATE_TIME_FORMAT)}\n")
+            add_dir_col_to_data(DATA_FILENAME)
+            log_file.write(f"Finished adding direction -> {time.strftime(DATE_TIME_FORMAT)}\n")
+
+            # Calculating and storing angle error
+            log_file.write(f"Started calculating Angle Error -> {time.strftime(DATE_TIME_FORMAT)}\n")
+            formulas.calculate_and_update_angle_errors(DATA_FILENAME)
+            print(f"Angle errors calculated and file updated -> {time.strftime(DATE_TIME_FORMAT)}\n")
+
+            log_file.write(f"Logs are saved in     : {LOG_FILENAME}\n")
+            log_file.write(f"Final CSV saved to  : {DATA_FILENAME}\n")
             log_file.write("====================================================\n")
 
     except KeyboardInterrupt:

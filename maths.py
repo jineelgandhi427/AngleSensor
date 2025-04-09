@@ -1,8 +1,11 @@
 from math import pi, sin, cos, degrees, atan2
+import pandas as pd
+
+ENCODER_PPR = 40000  # Total pulse per rotation of encoder in the system
 
 
 class Formula:
-    def __init__(self, o_x_m, o_y_m, a_x_m, a_y_m, phi_x_m, phi_y_m, phi_m):
+    def __init__(self, o_x_m: float, o_y_m: float, a_x_m: float, a_y_m: float, phi_x_m: float, phi_y_m: float):
         self.O_X_M = o_x_m
         self.O_Y_M = o_y_m
         self.A_X_M = a_x_m
@@ -10,6 +13,7 @@ class Formula:
         self.PHI_X_M = phi_x_m
         self.PHI_Y_M = phi_y_m
         self.PHI_M = self.PHI_X_M - self.PHI_Y_M
+        self.prev_encoder_degree = 0.0
 
     def y_sin_diff(self, sin_p, sin_n):
         y_sin_diff = sin_p - sin_n
@@ -20,7 +24,8 @@ class Formula:
         return x_cos_diff
 
     def encoder_theta_degree(self, theta_bits, prev_theta_bits):
-        theta_degree = ((360/pi)*theta_bits)+prev_theta_bits
+        theta_degree = ((360/ENCODER_PPR)*theta_bits)+prev_theta_bits
+        self.prev_encoder_degree = theta_degree
         return theta_degree
 
     def y1_sin(self, y_sin_diff):
@@ -45,16 +50,114 @@ class Formula:
         return y3_sin
 
     def alpha(self, step, dir, x2_cos, y3_sin):
-        if step == 0:
-            angle = degrees(atan2(x2_cos, y3_sin)) - self.PHI_X_M
-            angle = (angle + 360) % 360
+        angle = degrees(atan2(y3_sin, x2_cos)) - (self.PHI_X_M)
+        angle = (angle + 360) % 360
+        if step == 0:  # For step 0 of CW and CCW
             if dir == 'CW':
                 if angle > 5:
                     return angle - 360
                 else:
                     return angle
-            if dir == 'CCW':
+            else:
                 if angle < 355:
                     return angle + 360
                 else:
                     return angle
+        elif step == 64:  # For step 64 of CW and CCW
+            if dir == 'CW':
+                if angle < 355:
+                    return angle + 360
+                else:
+                    return angle
+            else:
+                if angle > 5:
+                    return angle - 360
+                else:
+                    return angle
+        else:  # For step 1-63 of CW and CCW
+            return angle
+
+    def calculate_and_update_angle_errors(self, file_path):
+        """
+        Calculates angle errors from a CSV file, adds an 'angle_error' column, and overwrites the CSV.
+        Args:
+            file_path (str): Path to the CSV file.
+        """
+        try:
+            df = pd.read_csv(file_path)
+
+            angle_errors = []
+            alpha_angle = []
+            encoder_angle = []
+
+            for idx in range(0, len(df)):
+                step = df.at[idx, 'step']
+                dir = df.at[idx, 'direction']
+                sin_p = df.at[idx, 'SIN_P']
+                cos_p = df.at[idx, 'COS_P']
+                sin_n = df.at[idx, 'SIN_N']
+                cos_n = df.at[idx, 'COS_N']
+                theta_bits = df.at[idx, 'encoder']
+                prev_theta_bits = self.prev_encoder_degree  # previous encoder degree value
+
+                # Apply formula chain
+                y_sin_diff = self.y_sin_diff(sin_p, sin_n)
+                x_cos_diff = self.x_cos_diff(cos_p, cos_n)
+                encoder_theta_degree = self.encoder_theta_degree(theta_bits, prev_theta_bits)
+                y1_sin = self.y1_sin(y_sin_diff)
+                x1_cos = self.x1_cos(x_cos_diff)
+                y2_sin = self.y2_sin(y1_sin)
+                x2_cos = self.x2_cos(x1_cos)
+                y3_sin = self.y3_sin(x2_cos, y2_sin)
+                alpha_degree = self.alpha(step, dir, x2_cos, y3_sin)
+                angle_error = alpha_degree - encoder_theta_degree
+
+                # if idx == 0:
+                #     print(f"Step: {step}")
+                #     print(f"Direction: {dir}")
+                #     print(f"SIN_P: {sin_p}")
+                #     print(f"COS_P: {cos_p}")
+                #     print(f"SIN_N: {sin_n}")
+                #     print(f"COS_N: {cos_n}")
+                #     print(f"Theta bits (current encoder): {theta_bits}")
+                #     print(f"Previous Theta (prev_encoder_degree): {self.prev_encoder_degree}")
+                #     print("")
+                #     print(f"y_sin_diff:{y_sin_diff}")
+                #     print(f"x_cos_diff:{x_cos_diff}")
+                #     print(f"encoder_theta_degree:{encoder_theta_degree}")
+                #     print(f"y1_sin:{y1_sin}")
+                #     print(f"x1_cos:{x1_cos}")
+                #     print(f"y2_sin:{y2_sin}")
+                #     print(f"x2_cos:{x2_cos}")
+                #     print(f"y3_sin:{y3_sin}")
+                #     print(f"alpha_degree:{alpha_degree}")
+                #     print(f"angle_error:{angle_error}")
+
+                angle_errors.append(angle_error)
+                alpha_angle.append(alpha_degree)
+                encoder_angle.append(encoder_theta_degree)
+
+            # Add the new column to the dataframe
+            df['angle_error'] = angle_errors
+            df['alpha'] = alpha_angle
+            df['theta'] = encoder_angle
+
+            # Overwrite the file
+            df.to_csv(file_path, index=False)
+            return True
+
+        except Exception as e:
+            print(f"Error occurred: {e}")
+            return False
+
+
+if __name__ == "__main__":
+    formula = Formula(
+        o_x_m=29.03556466,
+        o_y_m=-54.48724837,
+        a_x_m=-8332.166124,
+        a_y_m=8422.317839,
+        phi_x_m=-207.7479706,
+        phi_y_m=-206.5385603
+    )
+    formula.calculate_and_update_angle_errors("123.csv")
