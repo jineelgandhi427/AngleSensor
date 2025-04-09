@@ -49,8 +49,8 @@ system_start = time.time()  # The variable is used to note down the system start
 cycle_count = 0  # To store the current cycle number
 notedown_system_start_time = True
 encoder_error_after_CCW_prev = 0  # To store the previously calculated total error after each CW operation
-cw_encoder_error_diff = []
-ccw_encoder_error_diff = []
+cw_encoder_error_diff = 0
+ccw_encoder_error_diff = 0
 
 # Maths module object
 formulas = Formula(o_x_m=O_X_M, o_y_m=O_Y_M, a_x_m=A_X_M, a_y_m=A_Y_M, phi_x_m=PHI_X_M, phi_y_m=PHI_Y_M)
@@ -237,14 +237,15 @@ def main():
 
                     match_cw = re.search(CW_ENCODER_ERROR_REGEX, line)
                     if match_cw:
-                        cw_encoder_error_diff.append(match_cw)
+                        cw_encoder_error_diff = match_cw.group(1)
                     match_ccw = re.search(CCW_ENCODER_ERROR_REGEX, line)
                     if match_ccw:
-                        ccw_encoder_error_diff.append(match_ccw)
+                        ccw_encoder_error_diff = match_ccw.group(1)
 
                     if CYCLE_ENDED_INDICATOR in line:
                         encoder_errors = parse_encoder_errors(ser, csv_encoder_error_writer, encoder_file)
-                        log_event(log_file, f"Cycle {cycle_count} ended -> {encoder_errors}")
+                        log_event(
+                            log_file, f"Cycle {cycle_count} ended -> {encoder_errors} -> [{cw_encoder_error_diff},{ccw_encoder_error_diff}]")
                         print(f"\n{'*'*50}\nFinished cycle {cycle_count}\n{'*'*50}")
                         break
 
@@ -280,9 +281,9 @@ def main():
             log_file.write(f"Finished adding direction -> {time.strftime(DATE_TIME_FORMAT)}\n")
 
             # Calculating and storing angle error
-            log_file.write(f"Started calculating Angle Error -> {time.strftime(DATE_TIME_FORMAT)}\n")
-            formulas.calculate_and_update_angle_errors(DATA_FILENAME)
-            print(f"Angle errors calculated and file updated -> {time.strftime(DATE_TIME_FORMAT)}\n")
+            # log_file.write(f"Started calculating Angle Error -> {time.strftime(DATE_TIME_FORMAT)}\n")
+            # formulas.calculate_and_update_angle_errors(DATA_FILENAME)
+            # print(f"Angle errors calculated and file updated -> {time.strftime(DATE_TIME_FORMAT)}\n")
 
             log_file.write(f"Logs are saved in     : {LOG_FILENAME}\n")
             log_file.write(f"Final CSV saved to  : {DATA_FILENAME}\n")
