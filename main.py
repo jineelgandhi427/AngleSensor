@@ -12,15 +12,6 @@ BAUDRATE = 115200  # Communication rate
 CYCLE_DURATION_MIN = 1  # Approx duration of one cycle in minutes
 ENCODER_PPR = 40000  # Total pulse per rotation of encoder in the system
 
-# ---------------------SET CALIBRATION VALUES----------------------------------------------------------------------
-O_X_M = 0.0
-O_Y_M = 0.0
-A_X_M = 0.0
-A_Y_M = 0.0
-PHI_X_M = 0.0
-PHI_Y_M = 0.0
-# -----------------------------------------------------------------------------------------------------------------
-
 # ---------------------SET SYSTEM RUN TIME-------------------------------------------------------------------------
 RUN_SYSTEM_MIN = 1
 # -----------------------------------------------------------------------------------------------------------------
@@ -53,7 +44,7 @@ cw_encoder_error_diff = 0
 ccw_encoder_error_diff = 0
 
 # Maths module object
-formulas = Formula(o_x_m=O_X_M, o_y_m=O_Y_M, a_x_m=A_X_M, a_y_m=A_Y_M, phi_x_m=PHI_X_M, phi_y_m=PHI_Y_M)
+# formulas = Formula(o_x_m=O_X_M, o_y_m=O_Y_M, a_x_m=A_X_M, a_y_m=A_Y_M, phi_x_m=PHI_X_M, phi_y_m=PHI_Y_M)
 
 
 def parse_sensor_data(line, csv_writer, csvfile):
@@ -107,71 +98,6 @@ def wait_for_ack(ser, expected_str):
 def log_event(log_file, message):
     timestamp = datetime.now().strftime(DATE_TIME_FORMAT)
     log_file.write(f"[{timestamp}] {message}\n")
-
-
-def parse_encoder_errors(ser, csv_encoder_error_writer, encoder_file):
-    '''
-    Calculation of Encoder error:
-    CSV file columns -> [Step0_of_CW, Step0_of_CCW]
-    if, Cycle=1 → [0, CW - PPR]
-    else → [ PE, (PE + CW) - PPR]
-    where, PE = Previous Error, PPR = Pulse Per Relovution
-
-    For, example:
-    Cycle1 -> [0, (CW1 - PPR) ]
-    Cycle2 -> [ PE, (PE + CW2) - PPR] (PE = CW1 + CCW1)
-    Cycle3 -> [ PE, (PE + CW3) - PPR] (PE = CW1 + CCW1 + CW2 + CCW2)
-    ..................
-    '''
-    global cycle_count, encoder_error_after_CCW_prev
-    encoder_error_stored_CW = False
-    encoder_error_stored_CCW = False
-    # Run in a loop until encoder values are not received
-    while not encoder_error_stored_CW or not encoder_error_stored_CCW:
-        line = ser.readline().decode('utf-8', errors='ignore').strip()
-        if match := re.search(ENCODER_0_360_COUNT_REGEX, line):
-            current_encoder_error_CW = int(match.group(1))
-            encoder_error_stored_CW = True
-        elif match := re.search(ENCODER_360_0_COUNT_REGEX, line):
-            current_encoder_error_CCW = int(match.group(1))
-            encoder_error_stored_CCW = True
-
-    # Calculating total error after cw rotation and adding previous error, this will be used in next loop
-    encoder_error_after_CCW = encoder_error_after_CCW_prev + current_encoder_error_CW + current_encoder_error_CCW
-
-    # Save the encoder error in a csv file
-    if (cycle_count == 1):
-        csv_encoder_error_writer.writerow([cycle_count, 0, current_encoder_error_CW - ENCODER_PPR])  # [0, CW - PPR]
-    else:
-        encoder_error_after_CW = (encoder_error_after_CCW_prev + current_encoder_error_CW) - ENCODER_PPR
-        csv_encoder_error_writer.writerow([cycle_count, encoder_error_after_CCW_prev,
-                                          encoder_error_after_CW])  # [ PREVIOUS_ERR, (PREVIOUS_ERR + CW) - PPR]
-    encoder_file.flush()
-    encoder_error_after_CCW_prev = encoder_error_after_CCW  # Storing the value of previous error
-    return [current_encoder_error_CW, current_encoder_error_CCW]
-
-
-def fit_encoder_error_to_measurements(encoder_error_file_path, measurements_file_path):
-    # Load both CSVs
-    encoder_error = pd.read_csv(encoder_error_file_path)
-    measurements = pd.read_csv(measurements_file_path)
-    # Iterate through each cycle
-    for idx, row in encoder_error.iterrows():
-        cycle_num = row['cycle']
-        error_cw = row['encoder_error_cw']
-        error_ccw = row['encoder_error_ccw']
-        # Find all step 0 entries for this cycle
-        step0_rows = measurements[(measurements['cycle'] == cycle_num) & (measurements['step'] == 0)]
-        # Get the indexes
-        first_step0_idx = step0_rows.index[0]
-        second_step0_idx = step0_rows.index[1]
-        # Update the encoder values
-        measurements.at[first_step0_idx, 'encoder'] = error_cw
-        measurements.at[second_step0_idx, 'encoder'] = error_ccw
-    # Overwrite the existing file
-    measurements.to_csv(measurements_file_path, index=False)
-    print(f"Done...")
-    print("")
 
 
 def add_dir_col_to_data(file_path):
@@ -243,9 +169,6 @@ def main():
                         ccw_encoder_error_diff = match_ccw.group(1)
 
                     if CYCLE_ENDED_INDICATOR in line:
-                        encoder_errors = parse_encoder_errors(ser, csv_encoder_error_writer, encoder_file)
-                        log_event(
-                            log_file, f"Cycle {cycle_count} ended -> {encoder_errors} -> [{cw_encoder_error_diff},{ccw_encoder_error_diff}]")
                         print(f"\n{'*'*50}\nFinished cycle {cycle_count}\n{'*'*50}")
                         break
 
@@ -267,12 +190,6 @@ def main():
             log_file.write(f"System started at     : {full_system_start.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"System ended at       : {full_system_end.strftime(DATE_TIME_FORMAT)}\n")
             log_file.write(f"Total time elapsed    : {total_runtime_min} minutes\n")
-
-            print("Fitting encoder counts...")
-            log_file.write(f"Start fitting Encoder counts -> {time.strftime(DATE_TIME_FORMAT)}\n")
-            fit_encoder_error_to_measurements(ENCODER_FILENAME, DATA_FILENAME)
-            log_file.write(f"Finished fitting Encoder counts -> {time.strftime(DATE_TIME_FORMAT)}\n")
-            log_file.write(f"Encoder error file saved as   : {ENCODER_FILENAME}\n")
 
             # Add direction column (CW/CCW) to the data
             print("Adding direction column...")
