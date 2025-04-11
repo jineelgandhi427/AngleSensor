@@ -17,4 +17,4 @@ def add_dir_col_to_data(file_path):
 
 
 if __name__ == "__main__":
-    add_dir_col_to_data("measurement_log_20250408_125915.csv")
+    add_dir_col_to_data("measurement_log_20250408_084234.csv")

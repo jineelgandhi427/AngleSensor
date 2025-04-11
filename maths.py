@@ -112,27 +112,6 @@ class Formula:
                 alpha_degree = self.alpha(step, dir, x2_cos, y3_sin)
                 angle_error = alpha_degree - encoder_theta_degree
 
-                # if idx == 0:
-                #     print(f"Step: {step}")
-                #     print(f"Direction: {dir}")
-                #     print(f"SIN_P: {sin_p}")
-                #     print(f"COS_P: {cos_p}")
-                #     print(f"SIN_N: {sin_n}")
-                #     print(f"COS_N: {cos_n}")
-                #     print(f"Theta bits (current encoder): {theta_bits}")
-                #     print(f"Previous Theta (prev_encoder_degree): {self.prev_encoder_degree}")
-                #     print("")
-                #     print(f"y_sin_diff:{y_sin_diff}")
-                #     print(f"x_cos_diff:{x_cos_diff}")
-                #     print(f"encoder_theta_degree:{encoder_theta_degree}")
-                #     print(f"y1_sin:{y1_sin}")
-                #     print(f"x1_cos:{x1_cos}")
-                #     print(f"y2_sin:{y2_sin}")
-                #     print(f"x2_cos:{x2_cos}")
-                #     print(f"y3_sin:{y3_sin}")
-                #     print(f"alpha_degree:{alpha_degree}")
-                #     print(f"angle_error:{angle_error}")
-
                 angle_errors.append(angle_error)
                 alpha_angle.append(alpha_degree)
                 encoder_angle.append(encoder_theta_degree)
@@ -153,11 +132,11 @@ class Formula:
 
 if __name__ == "__main__":
     formula = Formula(
-        o_x_m=29.03556466,
-        o_y_m=-54.48724837,
-        a_x_m=-8332.166124,
-        a_y_m=8422.317839,
-        phi_x_m=-207.7479706,
-        phi_y_m=-206.5385603
+        o_x_m=3.7854016025888395,
+        o_y_m=-68.1212087931653,
+        a_x_m=-8329.256046248338,
+        a_y_m=8410.02408859496,
+        phi_x_m=-35.059167998465355,
+        phi_y_m=-34.193377820597
     )
-    formula.calculate_and_update_angle_errors("123.csv")
+    formula.calculate_and_update_angle_errors("measurement_log_20250410_114038.csv")

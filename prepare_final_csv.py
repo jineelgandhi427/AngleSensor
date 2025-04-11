@@ -2,8 +2,8 @@ import pandas as pd
 import re
 
 # Please eneter the file paths to prepare a final CSV file.
-raw_data_file_path = "measurement_log_20250401_143907.csv"
-temp_chamber_file_path = "01 April 2.csv"
+raw_data_file_path = "20250408_084234_without_encoder_error_all_cycle_calibration.csv"
+temp_chamber_file_path = "tmp_data.csv"
 
 
 class PrepareData:
